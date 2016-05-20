@@ -17,13 +17,14 @@
 package scalismo.numerics
 
 import breeze.linalg.svd.SVD
-import breeze.linalg.{DenseMatrix, DenseVector}
+import breeze.linalg.{ DenseMatrix, DenseVector, sum }
 import breeze.numerics.pow
 import scalismo.geometry._
-import scalismo.kernels.{MatrixValuedPDKernel, PDKernel}
+import scalismo.kernels.{ MatrixValuedPDKernel, PDKernel }
 import scalismo.utils.Benchmark
 
 import scala.collection.mutable.ArrayBuffer
+import scala.collection.parallel.mutable.ParArray
 
 /**
  * Result object for the pivoted cholesky of a matrix A
@@ -56,8 +57,8 @@ private class PivotedCholeskyFactor(d: Int, sizeHint: Int = 20) {
 
   def toDenseMatrix: DenseMatrix[Double] = {
     val m = DenseMatrix.zeros[Double](d, cols.size)
-    for(i <- cols.indices) {
-      m(::,i) := cols(i)
+    for (i <- cols.indices) {
+      m(::, i) := cols(i)
     }
     m
   }
@@ -92,7 +93,7 @@ object PivotedCholesky {
 
     // The matrix will hold the result (i.e. LL' is the resulting kernel matrix). As we do not know the
     // number of columns we compute until we have the desired accuracy, the matrix is updated in each iteration.
-    val L = new PivotedCholeskyFactor(n,n)
+    val L = new PivotedCholeskyFactor(n, n)
 
     // we either loop until we have the required number of eigenfunction, the precition or
     // the trace is not decreasing anymore (which is a sign of numerical instabilities)
@@ -105,23 +106,38 @@ object PivotedCholesky {
       val tmp = p(k)
       p(k) = p(pivl)
       p(pivl) = tmp
-      //println("dpk: " + d(p(k)))
 
       S(p(k)) = Math.sqrt(d(p(k)))
-      val Adata = p.slice(k + 1, n).par.map(i => kernel(xs(i), xs(p(k))))
-      val AMat = DenseMatrix.create[Double](n - k - 1, 1, Adata.toArray).toDenseVector
-      S(p.slice(k + 1, n)) := AMat / S(p(k))
 
-      // update L
-      val rhs = (L.toDenseMatrix(p.slice(k + 1, n), IndexedSeq.range(0, k)).toDenseMatrix * L.toDenseMatrix(IndexedSeq(p(k)), IndexedSeq.range(0, k)).toDenseMatrix.t) / S(p(k))
-      S(p.slice(k + 1, n)) := (S(p.slice(k + 1, n)) - rhs.toDenseVector)
+      var rhs = DenseVector.zeros[Double](n - k - 1)
 
-      // update d
-      val lll = S(p.slice(k,n)).map(e => Math.pow(e, 2))
+      var i = 0
+
+      var r = k + 1
+
+      while (r < n) {
+
+        var sum = 0.0
+        var c = 0
+        while (c < k) {
+          sum += L(p(r), c) * L(p(k), c)
+          c += 1
+        }
+
+        S(p(r)) = (kernel(xs(p(r)), xs(p(k))) - sum) / S(p(k))
+
+        i += 1
+        r += 1
+
+      }
+
+      val lll = S(p.slice(k, n)).map(e => e * e)
       val ddd = d(p.slice(k, n)).toDenseVector
       d(p.slice(k, n)) := ddd - lll
-      tr = breeze.linalg.sum(d(p.slice(k, n)).toDenseVector)
+      tr = sum(d(p.slice(k, n)))
       L.addCol(S.toDenseVector)
+
+      println(s"Iteration: $k | Trace: $tr")
 
       k += 1
     }
