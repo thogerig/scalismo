@@ -112,10 +112,7 @@ object PivotedCholesky {
       var rhs = DenseVector.zeros[Double](n - k - 1)
 
       var i = 0
-
-      var r = k + 1
-
-      while (r < n) {
+      for (r <- (k + 1 until n).par) {
 
         var sum = 0.0
         var c = 0
@@ -125,20 +122,15 @@ object PivotedCholesky {
         }
 
         S(p(r)) = (kernel(xs(p(r)), xs(p(k))) - sum) / S(p(k))
+        d(p(r)) = d(p(r)) - (S(p(r)) * S(p(r)))
 
         i += 1
-        r += 1
 
       }
 
-      val lll = S(p.slice(k, n)).map(e => e * e)
-      val ddd = d(p.slice(k, n)).toDenseVector
-      d(p.slice(k, n)) := ddd - lll
       tr = sum(d(p.slice(k, n)))
       L.addCol(S.toDenseVector)
-
-      println(s"Iteration: $k | Trace: $tr")
-
+      println(s"Pivoted Cholesky : Iteration: $k | Trace: $tr")
       k += 1
     }
 
