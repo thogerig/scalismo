@@ -76,13 +76,10 @@ object PivotedCholesky {
     stoppingCriterion: StoppingCriterion): PivotedCholesky = {
 
     val n = xs.size
+    val p = scala.collection.mutable.ArrayBuffer.range(0, n)
+    val d = scala.collection.mutable.ArrayBuffer.tabulate(n)(i => kernel(xs(i),xs(i)))
 
-    val p = scala.collection.mutable.IndexedSeq.range(0, n)
-
-    val diagData = for (x <- xs) yield kernel(x, x)
-    val d = DenseVector[Double](diagData.toArray)
-
-    var tr: Double = breeze.linalg.sum(d)
+    var tr: Double = d.sum
     var k = 0
 
     val (tolerance, maxNumEigenfunctions) = stoppingCriterion match {
@@ -91,45 +88,39 @@ object PivotedCholesky {
       case NumberOfEigenfunctions(numEigenfuns) => (1e-15, numEigenfuns)
     }
 
-    // The matrix will hold the result (i.e. LL' is the resulting kernel matrix). As we do not know the
-    // number of columns we compute until we have the desired accuracy, the matrix is updated in each iteration.
     val L = new PivotedCholeskyFactor(n, n)
 
-    // we either loop until we have the required number of eigenfunction, the precition or
-    // the trace is not decreasing anymore (which is a sign of numerical instabilities)
     while (k < n && k < maxNumEigenfunctions && tr >= tolerance) {
 
       val S = DenseVector.zeros[Double](n)
-      // get biggest element for pivot and switch
+
       val pivl = /*k + */ (k until n).map(i => (i, d(p(i)))).maxBy(_._2)._1
 
       val tmp = p(k)
       p(k) = p(pivl)
       p(pivl) = tmp
 
-      S(p(k)) = Math.sqrt(d(p(k)))
+      val D = Math.sqrt(d(p(k)))
+      S(p(k)) = D
 
-      var rhs = DenseVector.zeros[Double](n - k - 1)
 
-      var i = 0
-      for (r <- (k + 1 until n).par) {
-
-        var sum = 0.0
-        var c = 0
-        while (c < k) {
-          sum += L(p(r), c) * L(p(k), c)
-          c += 1
+      var c = 0
+      while (c < k) {
+        val tmp = L(p(k),c)
+        for (r <- (k + 1 until n).par) {
+          S(p(r)) += L(p(r), c) * tmp
         }
-
-        S(p(r)) = (kernel(xs(p(r)), xs(p(k))) - sum) / S(p(k))
-        d(p(r)) = d(p(r)) - (S(p(r)) * S(p(r)))
-
-        i += 1
-
+        c += 1
       }
 
-      tr = sum(d(p.slice(k, n)))
-      L.addCol(S.toDenseVector)
+      tr = d(p(k))
+      for(r <- (k + 1 until n).par) {
+        S(p(r)) = (kernel(xs(p(r)),xs(p(k))) - S(p(r))) / D
+        d(p(r)) = d(p(r)) - (S(p(r)) * S(p(r)))
+        tr += d(p(r))
+      }
+
+      L.addCol(DenseVector(S.toArray))
       println(s"Pivoted Cholesky : Iteration: $k | Trace: $tr")
       k += 1
     }

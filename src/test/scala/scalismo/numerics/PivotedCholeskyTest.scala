@@ -29,7 +29,7 @@ class PivotedCholeskyTest extends ScalismoTestSuite {
 
     it("accurately approximates a covariance matrix from a random set of points and a kernel k in 1D") {
 
-      val pts = DenseVector.rand[Double](1000).toArray.map(v => Point(v.toFloat))
+      val pts = DenseVector.rand[Double](100).toArray.map(v => Point(v.toFloat))
       val k = GaussianKernel[_1D](0.2)
       val matrixValuedK = UncorrelatedKernel[_1D](k)
       val m = Kernel.computeKernelMatrix[_1D, _1D](pts, matrixValuedK)
