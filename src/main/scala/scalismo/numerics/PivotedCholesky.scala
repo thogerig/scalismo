@@ -77,7 +77,15 @@ object PivotedCholesky {
 
     val n = xs.size
     val p = scala.collection.mutable.ArrayBuffer.range(0, n)
-    val d = scala.collection.mutable.ArrayBuffer.tabulate(n)(i => kernel(xs(i),xs(i)))
+    val d = scala.collection.mutable.ArrayBuffer.tabulate(n)(i => kernel(xs(i), xs(i)))
+
+    def swapP(k : Int,pivl : Int) = {
+
+      val tmp = p(k)
+      p(k) = p(pivl)
+      p(pivl) = tmp
+
+    }
 
     var tr: Double = d.sum
     var k = 0
@@ -94,19 +102,16 @@ object PivotedCholesky {
 
       val S = DenseVector.zeros[Double](n)
 
-      val pivl = /*k + */ (k until n).map(i => (i, d(p(i)))).maxBy(_._2)._1
+      val pivl = (k until n).map(i => (i, d(p(i)))).maxBy(_._2)._1
 
-      val tmp = p(k)
-      p(k) = p(pivl)
-      p(pivl) = tmp
+      swapP(k,pivl)
 
       val D = Math.sqrt(d(p(k)))
       S(p(k)) = D
 
-
       var c = 0
       while (c < k) {
-        val tmp = L(p(k),c)
+        val tmp = L(p(k), c)
         for (r <- (k + 1 until n).par) {
           S(p(r)) += L(p(r), c) * tmp
         }
@@ -114,8 +119,8 @@ object PivotedCholesky {
       }
 
       tr = d(p(k))
-      for(r <- (k + 1 until n).par) {
-        S(p(r)) = (kernel(xs(p(r)),xs(p(k))) - S(p(r))) / D
+      for (r <- (k + 1 until n).par) {
+        S(p(r)) = (kernel(xs(p(r)), xs(p(k))) - S(p(r))) / D
         d(p(r)) = d(p(r)) - (S(p(r)) * S(p(r)))
         tr += d(p(r))
       }
